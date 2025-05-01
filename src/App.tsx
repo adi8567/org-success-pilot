@@ -13,6 +13,9 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import AppLayout from "./components/layout/AppLayout";
 import NotFound from "./pages/NotFound";
+import TasksPage from "./pages/Tasks";
+import AttendancePage from "./pages/Attendance";
+import LeavePage from "./pages/Leave";
 
 const queryClient = new QueryClient();
 
@@ -34,11 +37,11 @@ const App = () => (
                     {/* Protected Routes */}
                     <Route path="/" element={<AppLayout />}>
                       <Route path="dashboard" element={<Dashboard />} />
+                      <Route path="tasks" element={<TasksPage />} />
+                      <Route path="attendance" element={<AttendancePage />} />
+                      <Route path="leave" element={<LeavePage />} />
                       {/* Other routes will be implemented as needed */}
                       <Route path="employees" element={<div className="p-4">Employees Page (to be implemented)</div>} />
-                      <Route path="attendance" element={<div className="p-4">Attendance Page (to be implemented)</div>} />
-                      <Route path="leave" element={<div className="p-4">Leave Page (to be implemented)</div>} />
-                      <Route path="tasks" element={<div className="p-4">Tasks Page (to be implemented)</div>} />
                       <Route path="profile" element={<div className="p-4">Profile Page (to be implemented)</div>} />
                       <Route path="settings" element={<div className="p-4">Settings Page (to be implemented)</div>} />
                     </Route>
