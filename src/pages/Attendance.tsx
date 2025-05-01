@@ -1,23 +1,25 @@
 
 import React, { useState } from "react";
-import { useAttendance } from "@/contexts/AttendanceContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEmployees } from "@/contexts/EmployeeContext";
-import { 
-  Table, 
-  TableHeader, 
-  TableBody, 
-  TableRow, 
-  TableHead, 
-  TableCell 
-} from "@/components/ui/table";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
+import { useAttendance } from "@/contexts/AttendanceContext";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -34,359 +38,303 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Calendar,
-  Clock,
-  Users,
-  Plus,
-  Edit,
-  ArrowRight
-} from "lucide-react";
+import { format } from "date-fns";
+import { Calendar as CalendarIcon, Plus } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 
-const AttendanceStatusBadge = ({ status }) => {
-  const statusStyles = {
-    present: "bg-green-100 text-green-800 hover:bg-green-100",
-    absent: "bg-red-100 text-red-800 hover:bg-red-100",
-    late: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
-    "half-day": "bg-blue-100 text-blue-800 hover:bg-blue-100",
-  };
-
-  return (
-    <Badge className={statusStyles[status]} variant="outline">
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
-};
-
 const AttendancePage: React.FC = () => {
-  const { user, isAdmin } = useAuth();
-  const { attendanceRecords, clockIn, clockOut, markAttendance, updateAttendance } = useAttendance();
-  const { employees } = useEmployees();
-  
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
-  const [selectedEmployee, setSelectedEmployee] = useState(isAdmin ? "" : user.id);
-  const [isMarkDialogOpen, setIsMarkDialogOpen] = useState(false);
-  
-  // Form state for marking attendance
-  const [newAttendance, setNewAttendance] = useState({
-    employeeId: "",
-    date: selectedDate,
-    clockIn: "",
-    clockOut: "",
-    status: "present",
-    notes: "",
-  });
-  
-  // Get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split("T")[0];
-  
-  // Check if the current user has already clocked in/out today
-  const todayRecord = attendanceRecords.find(
-    record => record.employeeId === user.id && record.date === today
-  );
-  
-  // Filter attendance records based on selected date and employee
-  const filteredRecords = attendanceRecords.filter((record) => {
-    if (selectedDate && record.date !== selectedDate) {
-      return false;
+  const { isAdmin, user } = useAuth();
+  const { attendanceRecords, addAttendanceRecord, updateAttendanceRecord } = useAttendance();
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [clockIn, setClockIn] = useState("");
+  const [clockOut, setClockOut] = useState("");
+  const [status, setStatus] = useState<"present" | "absent" | "late" | "half-day">("present");
+  const [notes, setNotes] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(user?.id || "");
+
+  const handleAddAttendance = () => {
+    if (!selectedDate) {
+      toast.error("Please select a date");
+      return;
     }
-    
-    if (selectedEmployee && record.employeeId !== selectedEmployee) {
-      return false;
-    }
-    
-    return true;
-  });
-  
-  // Reset form when dialog opens/closes
-  const resetForm = () => {
-    setNewAttendance({
-      employeeId: isAdmin ? "" : user.id,
-      date: selectedDate,
-      clockIn: "",
-      clockOut: "",
-      status: "present",
-      notes: "",
+
+    const formattedDate = format(selectedDate, "yyyy-MM-dd");
+
+    addAttendanceRecord({
+      employeeId: selectedEmployeeId,
+      date: formattedDate,
+      clockIn,
+      clockOut,
+      status,
+      notes,
     });
-  };
-  
-  // Handle mark attendance form submit
-  const handleMarkAttendance = (e) => {
-    e.preventDefault();
+
+    // Reset form
+    setSelectedDate(new Date());
+    setClockIn("");
+    setClockOut("");
+    setStatus("present");
+    setNotes("");
+    setIsAddDialogOpen(false);
     
-    markAttendance({
-      ...newAttendance,
-    });
-    
-    setIsMarkDialogOpen(false);
-    resetForm();
-  };
-  
-  // Handle clock in button click
-  const handleClockIn = () => {
-    clockIn(user.id);
-  };
-  
-  // Handle clock out button click
-  const handleClockOut = () => {
-    clockOut(user.id);
+    toast.success("Attendance record added successfully");
   };
 
+  const handleClockIn = () => {
+    const now = new Date();
+    const clockInTime = format(now, "HH:mm");
+    const today = format(now, "yyyy-MM-dd");
+    
+    // Check if there's already an entry for today
+    const todayEntry = attendanceRecords.find(
+      record => record.date === today && record.employeeId === user?.id
+    );
+    
+    if (todayEntry) {
+      updateAttendanceRecord({
+        ...todayEntry,
+        clockIn: clockInTime,
+        status: "present"
+      });
+      toast.success("Clocked in successfully");
+    } else {
+      addAttendanceRecord({
+        employeeId: user?.id || "",
+        date: today,
+        clockIn: clockInTime,
+        clockOut: "",
+        status: "present",
+        notes: ""
+      });
+      toast.success("Attendance started for today");
+    }
+  };
+
+  const handleClockOut = () => {
+    const now = new Date();
+    const clockOutTime = format(now, "HH:mm");
+    const today = format(now, "yyyy-MM-dd");
+    
+    // Find today's entry
+    const todayEntry = attendanceRecords.find(
+      record => record.date === today && record.employeeId === user?.id
+    );
+    
+    if (todayEntry) {
+      updateAttendanceRecord({
+        ...todayEntry,
+        clockOut: clockOutTime
+      });
+      toast.success("Clocked out successfully");
+    } else {
+      toast.error("No clock-in record found for today");
+    }
+  };
+
+  // Filter records based on user role
+  const filteredRecords = isAdmin 
+    ? attendanceRecords 
+    : attendanceRecords.filter(record => record.employeeId === user?.id);
+
+  // Check if user has already clocked in/out today
+  const today = format(new Date(), "yyyy-MM-dd");
+  const todayRecord = attendanceRecords.find(
+    record => record.date === today && record.employeeId === user?.id
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Attendance Management</h1>
-        <div className="flex space-x-2">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Attendance Management</h2>
+          <p className="text-muted-foreground">
+            {isAdmin ? "Manage employee attendance records" : "View and manage your attendance"}
+          </p>
+        </div>
+        
+        <div className="flex gap-2">
+          {!isAdmin && (
+            <>
+              <Button 
+                onClick={handleClockIn}
+                disabled={todayRecord?.clockIn !== ""}
+              >
+                Clock In
+              </Button>
+              <Button 
+                onClick={handleClockOut}
+                disabled={!todayRecord?.clockIn || todayRecord?.clockOut !== ""}
+              >
+                Clock Out
+              </Button>
+            </>
+          )}
+          
           {isAdmin && (
-            <Dialog open={isMarkDialogOpen} onOpenChange={setIsMarkDialogOpen}>
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={resetForm}>
+                <Button>
                   <Plus className="mr-2 h-4 w-4" />
-                  Mark Attendance
+                  Add Record
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
+              <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Mark Attendance</DialogTitle>
+                  <DialogTitle>Add Attendance Record</DialogTitle>
                   <DialogDescription>
-                    Record attendance for an employee
+                    Add a new attendance record for an employee
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleMarkAttendance}>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="employeeId">Employee</Label>
-                      <Select
-                        value={newAttendance.employeeId}
-                        onValueChange={(value) => setNewAttendance({ ...newAttendance, employeeId: value })}
-                        required
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Employee" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {employees.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.id}>
-                              {employee.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="date">Date</Label>
+                
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="employee">Employee</Label>
+                    <Input
+                      id="employee"
+                      placeholder="Employee ID"
+                      value={selectedEmployeeId}
+                      onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="date">Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !selectedDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={setSelectedDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="clockIn">Clock In</Label>
                       <Input
-                        id="date"
-                        type="date"
-                        value={newAttendance.date}
-                        onChange={(e) => setNewAttendance({ ...newAttendance, date: e.target.value })}
-                        required
+                        id="clockIn"
+                        type="time"
+                        value={clockIn}
+                        onChange={(e) => setClockIn(e.target.value)}
                       />
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="clockIn">Clock In</Label>
-                        <Input
-                          id="clockIn"
-                          type="time"
-                          value={newAttendance.clockIn}
-                          onChange={(e) => setNewAttendance({ ...newAttendance, clockIn: e.target.value })}
-                          required
-                        />
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="clockOut">Clock Out</Label>
-                        <Input
-                          id="clockOut"
-                          type="time"
-                          value={newAttendance.clockOut || ""}
-                          onChange={(e) => setNewAttendance({ ...newAttendance, clockOut: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="status">Status</Label>
-                      <Select
-                        value={newAttendance.status}
-                        onValueChange={(value) => setNewAttendance({ ...newAttendance, status: value })}
-                        required
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="present">Present</SelectItem>
-                          <SelectItem value="absent">Absent</SelectItem>
-                          <SelectItem value="late">Late</SelectItem>
-                          <SelectItem value="half-day">Half Day</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="notes">Notes</Label>
-                      <Textarea
-                        id="notes"
-                        value={newAttendance.notes}
-                        onChange={(e) => setNewAttendance({ ...newAttendance, notes: e.target.value })}
-                        placeholder="Any additional notes"
+                    <div>
+                      <Label htmlFor="clockOut">Clock Out</Label>
+                      <Input
+                        id="clockOut"
+                        type="time"
+                        value={clockOut}
+                        onChange={(e) => setClockOut(e.target.value)}
                       />
                     </div>
                   </div>
-                  <DialogFooter>
-                    <Button type="submit">Mark Attendance</Button>
-                  </DialogFooter>
-                </form>
+                  
+                  <div>
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={status} onValueChange={(value: "present" | "absent" | "late" | "half-day") => setStatus(value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="present">Present</SelectItem>
+                        <SelectItem value="absent">Absent</SelectItem>
+                        <SelectItem value="late">Late</SelectItem>
+                        <SelectItem value="half-day">Half Day</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      placeholder="Add any additional notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleAddAttendance}>Save</Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           )}
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="col-span-1 md:col-span-2">
-          <CardHeader>
-            <CardTitle>Today's Attendance</CardTitle>
-            <CardDescription>
-              {today} - {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-primary/10 rounded-full">
-                  <Clock className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Your Status</p>
-                  <div className="flex items-center mt-1">
-                    {todayRecord ? (
-                      <>
-                        <AttendanceStatusBadge status={todayRecord.status} />
-                        {todayRecord.clockIn && (
-                          <span className="text-xs text-muted-foreground ml-2">
-                            In: {todayRecord.clockIn}
-                            {todayRecord.clockOut && <> • Out: {todayRecord.clockOut}</>}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Not recorded yet</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleClockIn} 
-                  disabled={!!todayRecord?.clockIn}
-                  variant={!todayRecord?.clockIn ? "default" : "outline"}
-                >
-                  Clock In
-                </Button>
-                <Button
-                  onClick={handleClockOut}
-                  disabled={!todayRecord?.clockIn || !!todayRecord?.clockOut}
-                  variant={todayRecord?.clockIn && !todayRecord?.clockOut ? "default" : "outline"}
-                >
-                  Clock Out
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="col-span-1 md:col-span-2">
-          <CardHeader>
-            <CardTitle>Attendance Filters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <Label htmlFor="date-filter" className="mb-2 block">Date</Label>
-                <Input
-                  id="date-filter"
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                />
-              </div>
-              
-              {isAdmin && (
-                <div className="flex-1">
-                  <Label htmlFor="employee-filter" className="mb-2 block">Employee</Label>
-                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Employees" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Employees</SelectItem>
-                      {employees.map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                          {employee.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      
       <Card>
-        <CardContent className="pt-6">
-          {filteredRecords.length > 0 ? (
-            <Table>
-              <TableHeader>
+        <CardHeader>
+          <CardTitle>Attendance Records</CardTitle>
+          <CardDescription>
+            {isAdmin ? "All employee attendance records" : "Your attendance history"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableCaption>A list of attendance records</TableCaption>
+            <TableHeader>
+              <TableRow>
+                {isAdmin && <TableHead>Employee ID</TableHead>}
+                <TableHead>Date</TableHead>
+                <TableHead>Clock In</TableHead>
+                <TableHead>Clock Out</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Notes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredRecords.length === 0 ? (
                 <TableRow>
-                  {isAdmin && <TableHead>Employee</TableHead>}
-                  <TableHead>Date</TableHead>
-                  <TableHead>Clock In</TableHead>
-                  <TableHead>Clock Out</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Notes</TableHead>
+                  <TableCell colSpan={isAdmin ? 6 : 5} className="text-center">
+                    No attendance records found
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecords.map((record) => {
-                  const employee = employees.find(e => e.id === record.employeeId);
-                  return (
-                    <TableRow key={record.id}>
-                      {isAdmin && <TableCell>{employee?.name || "Unknown"}</TableCell>}
-                      <TableCell>{record.date}</TableCell>
-                      <TableCell>{record.clockIn || "-"}</TableCell>
-                      <TableCell>{record.clockOut || "-"}</TableCell>
-                      <TableCell>
-                        <AttendanceStatusBadge status={record.status} />
-                      </TableCell>
-                      <TableCell>{record.notes || "-"}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold">No attendance records found</h3>
-              <p className="text-muted-foreground text-center mt-2">
-                Try changing the filter parameters to view more records.
-              </p>
-            </div>
-          )}
+              ) : (
+                filteredRecords.map((record) => (
+                  <TableRow key={record.id}>
+                    {isAdmin && <TableCell>{record.employeeId}</TableCell>}
+                    <TableCell>{record.date}</TableCell>
+                    <TableCell>{record.clockIn || "N/A"}</TableCell>
+                    <TableCell>{record.clockOut || "N/A"}</TableCell>
+                    <TableCell>
+                      <span className={
+                        record.status === "present" ? "text-green-500" :
+                        record.status === "absent" ? "text-red-500" :
+                        record.status === "late" ? "text-yellow-500" : 
+                        "text-blue-500"
+                      }>
+                        {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                      </span>
+                    </TableCell>
+                    <TableCell>{record.notes || "N/A"}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
