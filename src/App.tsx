@@ -2,8 +2,16 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { EmployeeProvider } from "@/contexts/EmployeeContext";
+import { AttendanceProvider } from "@/contexts/AttendanceContext";
+import { LeaveProvider } from "@/contexts/LeaveContext";
+import { TaskProvider } from "@/contexts/TaskContext";
+
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import AppLayout from "./components/layout/AppLayout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -11,15 +19,38 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <EmployeeProvider>
+          <AttendanceProvider>
+            <LeaveProvider>
+              <TaskProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/login" />} />
+                    <Route path="/login" element={<Login />} />
+                    
+                    {/* Protected Routes */}
+                    <Route path="/" element={<AppLayout />}>
+                      <Route path="dashboard" element={<Dashboard />} />
+                      {/* Other routes will be implemented as needed */}
+                      <Route path="employees" element={<div className="p-4">Employees Page (to be implemented)</div>} />
+                      <Route path="attendance" element={<div className="p-4">Attendance Page (to be implemented)</div>} />
+                      <Route path="leave" element={<div className="p-4">Leave Page (to be implemented)</div>} />
+                      <Route path="tasks" element={<div className="p-4">Tasks Page (to be implemented)</div>} />
+                      <Route path="profile" element={<div className="p-4">Profile Page (to be implemented)</div>} />
+                      <Route path="settings" element={<div className="p-4">Settings Page (to be implemented)</div>} />
+                    </Route>
+                    
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </BrowserRouter>
+              </TaskProvider>
+            </LeaveProvider>
+          </AttendanceProvider>
+        </EmployeeProvider>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
