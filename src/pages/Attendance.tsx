@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAttendance } from "@/contexts/AttendanceContext";
@@ -48,11 +47,11 @@ import { toast } from "@/components/ui/sonner";
 
 const AttendancePage: React.FC = () => {
   const { isAdmin, user } = useAuth();
-  const { attendanceRecords, addAttendanceRecord, updateAttendanceRecord } = useAttendance();
+  const { attendanceRecords, clockIn, clockOut, markAttendance, updateAttendance } = useAttendance();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [clockIn, setClockIn] = useState("");
-  const [clockOut, setClockOut] = useState("");
+  const [clockInTime, setClockInTime] = useState("");
+  const [clockOutTime, setClockOutTime] = useState("");
   const [status, setStatus] = useState<"present" | "absent" | "late" | "half-day">("present");
   const [notes, setNotes] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(user?.id || "");
@@ -65,19 +64,19 @@ const AttendancePage: React.FC = () => {
 
     const formattedDate = format(selectedDate, "yyyy-MM-dd");
 
-    addAttendanceRecord({
+    markAttendance({
       employeeId: selectedEmployeeId,
       date: formattedDate,
-      clockIn,
-      clockOut,
+      clockIn: clockInTime,
+      clockOut: clockOutTime || null,
       status,
       notes,
     });
 
     // Reset form
     setSelectedDate(new Date());
-    setClockIn("");
-    setClockOut("");
+    setClockInTime("");
+    setClockOutTime("");
     setStatus("present");
     setNotes("");
     setIsAddDialogOpen(false);
@@ -85,54 +84,21 @@ const AttendancePage: React.FC = () => {
     toast.success("Attendance record added successfully");
   };
 
-  const handleClockIn = () => {
-    const now = new Date();
-    const clockInTime = format(now, "HH:mm");
-    const today = format(now, "yyyy-MM-dd");
-    
-    // Check if there's already an entry for today
-    const todayEntry = attendanceRecords.find(
-      record => record.date === today && record.employeeId === user?.id
-    );
-    
-    if (todayEntry) {
-      updateAttendanceRecord({
-        ...todayEntry,
-        clockIn: clockInTime,
-        status: "present"
-      });
+  const handleClockInAction = () => {
+    if (user?.id) {
+      clockIn(user.id);
       toast.success("Clocked in successfully");
     } else {
-      addAttendanceRecord({
-        employeeId: user?.id || "",
-        date: today,
-        clockIn: clockInTime,
-        clockOut: "",
-        status: "present",
-        notes: ""
-      });
-      toast.success("Attendance started for today");
+      toast.error("User ID not found");
     }
   };
 
-  const handleClockOut = () => {
-    const now = new Date();
-    const clockOutTime = format(now, "HH:mm");
-    const today = format(now, "yyyy-MM-dd");
-    
-    // Find today's entry
-    const todayEntry = attendanceRecords.find(
-      record => record.date === today && record.employeeId === user?.id
-    );
-    
-    if (todayEntry) {
-      updateAttendanceRecord({
-        ...todayEntry,
-        clockOut: clockOutTime
-      });
+  const handleClockOutAction = () => {
+    if (user?.id) {
+      clockOut(user.id);
       toast.success("Clocked out successfully");
     } else {
-      toast.error("No clock-in record found for today");
+      toast.error("User ID not found");
     }
   };
 
@@ -161,13 +127,13 @@ const AttendancePage: React.FC = () => {
           {!isAdmin && (
             <>
               <Button 
-                onClick={handleClockIn}
+                onClick={handleClockInAction}
                 disabled={todayRecord?.clockIn !== ""}
               >
                 Clock In
               </Button>
               <Button 
-                onClick={handleClockOut}
+                onClick={handleClockOutAction}
                 disabled={!todayRecord?.clockIn || todayRecord?.clockOut !== ""}
               >
                 Clock Out
@@ -234,8 +200,8 @@ const AttendancePage: React.FC = () => {
                       <Input
                         id="clockIn"
                         type="time"
-                        value={clockIn}
-                        onChange={(e) => setClockIn(e.target.value)}
+                        value={clockInTime}
+                        onChange={(e) => setClockInTime(e.target.value)}
                       />
                     </div>
                     <div>
@@ -243,8 +209,8 @@ const AttendancePage: React.FC = () => {
                       <Input
                         id="clockOut"
                         type="time"
-                        value={clockOut}
-                        onChange={(e) => setClockOut(e.target.value)}
+                        value={clockOutTime}
+                        onChange={(e) => setClockOutTime(e.target.value)}
                       />
                     </div>
                   </div>

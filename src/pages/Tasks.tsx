@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTasks } from "@/contexts/TaskContext";
@@ -96,7 +95,7 @@ const TasksPage: React.FC = () => {
       status,
       notes,
       progress,
-    });
+    }, progress);
 
     resetForm();
     setIsAddDialogOpen(false);
@@ -106,8 +105,7 @@ const TasksPage: React.FC = () => {
   const handleUpdateTask = () => {
     if (!selectedTask) return;
 
-    updateTask({
-      ...selectedTask,
+    updateTask(selectedTask.id, {
       title,
       description,
       assignedTo,

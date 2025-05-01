@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -20,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
-import { Bell, Moon, Palette, Shield, Language } from "lucide-react";
+import { Bell, Moon, Palette, Shield, Languages } from "lucide-react";
 
 const SettingsPage: React.FC = () => {
   const { isAdmin, user } = useAuth();
@@ -114,7 +113,7 @@ const SettingsPage: React.FC = () => {
                   Appearance
                 </Button>
                 <Button variant="ghost" className="w-full justify-start">
-                  <Language className="mr-2 h-4 w-4" />
+                  <Languages className="mr-2 h-4 w-4" />
                   Language
                 </Button>
                 <Button variant="ghost" className="w-full justify-start">

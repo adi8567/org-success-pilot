@@ -1,7 +1,7 @@
 
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLeave } from "@/contexts/LeaveContext";
+import { useLeaves } from "@/contexts/LeaveContext";
 import {
   Card,
   CardContent,
@@ -53,12 +53,12 @@ import { LeaveRequest, LeaveType } from "@/contexts/LeaveContext";
 
 const LeavePage: React.FC = () => {
   const { isAdmin, user } = useAuth();
-  const { leaveRequests, addLeaveRequest, updateLeaveRequest } = useLeave();
+  const { leaveRequests, applyForLeave, approveLeave, rejectLeave } = useLeaves();
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date | undefined>(new Date());
   const [endDate, setEndDate] = useState<Date | undefined>(addDays(new Date(), 1));
-  const [leaveType, setLeaveType] = useState<LeaveType>("annual");
+  const [leaveType, setLeaveType] = useState<LeaveType>("sick");
   const [reason, setReason] = useState("");
   
   const handleAddLeaveRequest = () => {
@@ -72,7 +72,7 @@ const LeavePage: React.FC = () => {
       return;
     }
     
-    addLeaveRequest({
+    applyForLeave({
       employeeId: user?.id || "",
       startDate: format(startDate, "yyyy-MM-dd"),
       endDate: format(endDate, "yyyy-MM-dd"),
@@ -83,7 +83,7 @@ const LeavePage: React.FC = () => {
     // Reset form
     setStartDate(new Date());
     setEndDate(addDays(new Date(), 1));
-    setLeaveType("annual");
+    setLeaveType("sick");
     setReason("");
     setIsAddDialogOpen(false);
     
@@ -91,10 +91,10 @@ const LeavePage: React.FC = () => {
   };
   
   const handleApproveReject = (id: string, newStatus: "approved" | "rejected") => {
-    const leaveRequest = leaveRequests.find((request) => request.id === id);
-    if (leaveRequest) {
-      updateLeaveRequest({ ...leaveRequest, status: newStatus });
-      toast.success(`Leave request ${newStatus}`);
+    if (newStatus === "approved") {
+      approveLeave(id, user?.id || "");
+    } else {
+      rejectLeave(id, user?.id || "");
     }
   };
   
@@ -204,10 +204,9 @@ const LeavePage: React.FC = () => {
                       <SelectValue placeholder="Select leave type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="annual">Annual Leave</SelectItem>
                       <SelectItem value="sick">Sick Leave</SelectItem>
+                      <SelectItem value="vacation">Vacation Leave</SelectItem>
                       <SelectItem value="personal">Personal Leave</SelectItem>
-                      <SelectItem value="unpaid">Unpaid Leave</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
