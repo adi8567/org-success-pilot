@@ -1,23 +1,15 @@
+
 import React, { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTasks } from "@/contexts/TaskContext";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+import { useAuth } from "@/contexts/AuthContext";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardFooter, 
+  CardHeader, 
+  CardTitle 
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -27,8 +19,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -36,384 +37,590 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
-import { Calendar as CalendarIcon, Plus } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
-import { toast } from "@/components/ui/sonner";
+import { Progress } from "@/components/ui/progress";
+import { 
+  CheckCircle, 
+  Clock, 
+  Edit, 
+  Filter, 
+  MoreHorizontal, 
+  Plus, 
+  Search, 
+  Trash 
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Slider } from "@/components/ui/slider";
+import { toast } from "@/components/ui/sonner";
 import { Task, TaskPriority, TaskStatus } from "@/contexts/TaskContext";
+import { useEmployees } from "@/contexts/EmployeeContext";
 
 const TasksPage: React.FC = () => {
-  const { isAdmin, user } = useAuth();
-  const { tasks, addTask, updateTask } = useTasks();
+  const { user, isAdmin } = useAuth();
+  const { tasks, addTask, updateTask, deleteTask } = useTasks();
+  const { employees } = useEmployees();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all");
+  const [filterPriority, setFilterPriority] = useState<TaskPriority | "all">("all");
   
+  // Filter tasks based on user role and filters
+  const filteredTasks = tasks.filter(task => {
+    // Admin sees all tasks, employees see only their assigned tasks
+    const roleFilter = isAdmin ? true : task.assignedTo === user?.id;
+    
+    // Search filter
+    const searchFilter = 
+      task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      task.description.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Status filter
+    const statusFilter = filterStatus === "all" ? true : task.status === filterStatus;
+    
+    // Priority filter
+    const priorityFilter = filterPriority === "all" ? true : task.priority === filterPriority;
+    
+    return roleFilter && searchFilter && statusFilter && priorityFilter;
+  });
+
+  // For adding a new task
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [assignedTo, setAssignedTo] = useState("");
-  const [dueDate, setDueDate] = useState<Date | undefined>(new Date());
-  const [priority, setPriority] = useState<TaskPriority>("medium");
-  const [status, setStatus] = useState<TaskStatus>("pending");
-  const [notes, setNotes] = useState("");
-  const [progress, setProgress] = useState(0);
+  const [newTask, setNewTask] = useState<Omit<Task, 'id' | 'createdAt'>>({
+    title: "",
+    description: "",
+    status: "pending",
+    priority: "medium",
+    dueDate: "",
+    assignedTo: "",
+    progress: 0
+  });
 
-  // Reset form when dialog closes
-  const resetForm = () => {
-    setTitle("");
-    setDescription("");
-    setAssignedTo("");
-    setDueDate(new Date());
-    setPriority("medium");
-    setStatus("pending");
-    setNotes("");
-    setProgress(0);
-    setSelectedTask(null);
-  };
-
-  const handleAddTask = () => {
-    if (!title || !description || !assignedTo || !dueDate) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
-    addTask({
-      assignedBy: user?.id || "",
-      title,
-      description,
-      assignedTo,
-      dueDate: format(dueDate, "yyyy-MM-dd"),
-      priority,
-      status,
-      notes,
-      progress,
-    }, progress);
-
-    resetForm();
-    setIsAddDialogOpen(false);
-    toast.success("Task added successfully");
-  };
-
-  const handleUpdateTask = () => {
-    if (!selectedTask) return;
-
-    updateTask(selectedTask.id, {
-      title,
-      description,
-      assignedTo,
-      dueDate: format(dueDate!, "yyyy-MM-dd"),
-      priority,
-      status,
-      notes,
-      progress,
+  // For editing a task
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  
+  // Handle form input change for new task
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setNewTask({
+      ...newTask,
+      [name]: value,
     });
-
-    resetForm();
-    setIsAddDialogOpen(false);
-    toast.success("Task updated successfully");
   };
-
-  const handleEditTask = (task: Task) => {
-    setSelectedTask(task);
-    setTitle(task.title);
-    setDescription(task.description);
-    setAssignedTo(task.assignedTo);
-    setDueDate(new Date(task.dueDate));
-    setPriority(task.priority);
-    setStatus(task.status);
-    setNotes(task.notes || "");
-    setProgress(task.progress);
-    setIsAddDialogOpen(true);
+  
+  // Handle select change (status, priority, assignee)
+  const handleSelectChange = (name: string, value: string) => {
+    setNewTask({
+      ...newTask,
+      [name]: value,
+    });
   };
-
-  const handleUpdateStatus = (taskId: string, newStatus: TaskStatus) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (task) {
-      updateTask({
-        ...task,
-        status: newStatus,
-        progress: newStatus === "completed" ? 100 : task.progress
+  
+  // Handle edit input change
+  const handleEditInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    if (editingTask) {
+      const { name, value } = e.target;
+      setEditingTask({
+        ...editingTask,
+        [name]: value,
       });
-      toast.success(`Task marked as ${newStatus}`);
     }
   };
-
-  // Filter tasks based on user role
-  const filteredTasks = isAdmin
-    ? tasks
-    : tasks.filter(task => task.assignedTo === user?.id || task.assignedBy === user?.id);
-
-  const getStatusBadge = (status: TaskStatus) => {
+  
+  // Handle edit select change
+  const handleEditSelectChange = (name: string, value: string) => {
+    if (editingTask) {
+      setEditingTask({
+        ...editingTask,
+        [name]: value,
+      });
+    }
+  };
+  
+  // Add new task
+  const handleAddTask = () => {
+    // Add createdAt date to the new task
+    addTask({
+      ...newTask,
+      createdAt: new Date().toISOString()
+    });
+    
+    // Reset form and close dialog
+    setNewTask({
+      title: "",
+      description: "",
+      status: "pending",
+      priority: "medium",
+      dueDate: "",
+      assignedTo: "",
+      progress: 0
+    });
+    setIsAddDialogOpen(false);
+  };
+  
+  // Update existing task
+  const handleUpdateTask = () => {
+    if (editingTask) {
+      updateTask(editingTask.id, editingTask);
+      setEditingTask(null);
+    }
+  };
+  
+  // Delete task
+  const handleDeleteTask = (id: string) => {
+    if (window.confirm("Are you sure you want to delete this task?")) {
+      deleteTask(id);
+    }
+  };
+  
+  // Get status badge color
+  const getStatusColor = (status: TaskStatus) => {
     switch (status) {
-      case "pending":
-        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">Pending</Badge>;
-      case "in_progress":
-        return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">In Progress</Badge>;
       case "completed":
-        return <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">Completed</Badge>;
+        return "bg-green-100 text-green-800";
+      case "in_progress":
+        return "bg-blue-100 text-blue-800";
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "on_hold":
+        return "bg-gray-100 text-gray-800";
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return "bg-gray-100 text-gray-800";
     }
   };
-
-  const getPriorityBadge = (priority: TaskPriority) => {
+  
+  // Get priority badge color
+  const getPriorityColor = (priority: TaskPriority) => {
     switch (priority) {
       case "high":
-        return <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">High</Badge>;
+        return "bg-red-100 text-red-800";
       case "medium":
-        return <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">Medium</Badge>;
+        return "bg-amber-100 text-amber-800";
       case "low":
-        return <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">Low</Badge>;
+        return "bg-blue-100 text-blue-800";
       default:
-        return <Badge variant="outline">{priority}</Badge>;
+        return "bg-gray-100 text-gray-800";
     }
   };
-
+  
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Task Management</h2>
+          <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
           <p className="text-muted-foreground">
-            {isAdmin ? "Manage and assign tasks to employees" : "View and update your tasks"}
+            {isAdmin ? "Manage and track all tasks" : "View and update your assigned tasks"}
           </p>
         </div>
         
-        {isAdmin && (
-          <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
-            setIsAddDialogOpen(open);
-            if (!open) resetForm();
-          }}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                New Task
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>{selectedTask ? "Edit Task" : "Create New Task"}</DialogTitle>
-                <DialogDescription>
-                  {selectedTask ? "Update task details" : "Add a new task for an employee"}
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="grid gap-4 py-4">
-                <div>
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    placeholder="Task title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Task description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="assignedTo">Assigned To (Employee ID)</Label>
-                  <Input
-                    id="assignedTo"
-                    placeholder="Employee ID"
-                    value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="dueDate">Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="dueDate"
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !dueDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dueDate ? format(dueDate, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={dueDate}
-                        onSelect={setDueDate}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select value={priority} onValueChange={(value: TaskPriority) => setPriority(value)}>
-                      <SelectTrigger id="priority">
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
+        <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              className="pl-8 w-full sm:w-[200px]"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          
+          <Select value={filterStatus} onValueChange={(value: TaskStatus | "all") => setFilterStatus(value)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="on_hold">On Hold</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Select value={filterPriority} onValueChange={(value: TaskPriority | "all") => setFilterPriority(value)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priorities</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {isAdmin && (
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Task
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Task</DialogTitle>
+                  <DialogDescription>
+                    Add details for the new task. Click save when you're done.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <label htmlFor="title" className="text-sm font-medium">Title</label>
+                    <Input
+                      id="title"
+                      name="title"
+                      placeholder="Task title"
+                      value={newTask.title}
+                      onChange={handleInputChange}
+                    />
                   </div>
                   
-                  <div>
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={status} onValueChange={(value: TaskStatus) => setStatus(value)}>
-                      <SelectTrigger id="status">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-2">
+                    <label htmlFor="description" className="text-sm font-medium">Description</label>
+                    <Textarea
+                      id="description"
+                      name="description"
+                      placeholder="Task description"
+                      value={newTask.description}
+                      onChange={handleInputChange}
+                      rows={3}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="status" className="text-sm font-medium">Status</label>
+                      <Select
+                        value={newTask.status}
+                        onValueChange={(value) => handleSelectChange("status", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="on_hold">On Hold</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label htmlFor="priority" className="text-sm font-medium">Priority</label>
+                      <Select
+                        value={newTask.priority}
+                        onValueChange={(value) => handleSelectChange("priority", value as TaskPriority)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select priority" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="dueDate" className="text-sm font-medium">Due Date</label>
+                      <Input
+                        id="dueDate"
+                        name="dueDate"
+                        type="date"
+                        value={newTask.dueDate}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label htmlFor="assignedTo" className="text-sm font-medium">Assigned To</label>
+                      <Select
+                        value={newTask.assignedTo}
+                        onValueChange={(value) => handleSelectChange("assignedTo", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select employee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.id}>
+                              {employee.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label htmlFor="progress" className="text-sm font-medium">
+                      Progress: {newTask.progress}%
+                    </label>
+                    <Input
+                      id="progress"
+                      name="progress"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={newTask.progress}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value);
+                        setNewTask({ ...newTask, progress: value });
+                      }}
+                    />
                   </div>
                 </div>
-                
-                <div>
-                  <Label htmlFor="progress">Progress ({progress}%)</Label>
-                  <Slider
-                    id="progress"
-                    value={[progress]}
-                    min={0}
-                    max={100}
-                    step={5}
-                    onValueChange={([value]) => setProgress(value)}
-                    className="my-2"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Additional notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
-                  />
-                </div>
-              </div>
-              
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                <Button onClick={selectedTask ? handleUpdateTask : handleAddTask}>
-                  {selectedTask ? "Update" : "Create"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={handleAddTask}>
+                    Create Task
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
       
-      <Card>
-        <CardHeader>
-          <CardTitle>Tasks</CardTitle>
-          <CardDescription>
-            {isAdmin ? "All assigned tasks" : "Your assigned tasks"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableCaption>A list of all tasks</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Description</TableHead>
-                {isAdmin && <TableHead>Assigned To</TableHead>}
-                <TableHead>Due Date</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={isAdmin ? 8 : 7} className="text-center">
-                    No tasks found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredTasks.map((task) => (
-                  <TableRow key={task.id}>
-                    <TableCell className="font-medium">{task.title}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{task.description}</TableCell>
-                    {isAdmin && <TableCell>{task.assignedTo}</TableCell>}
-                    <TableCell>{task.dueDate}</TableCell>
-                    <TableCell>{getPriorityBadge(task.priority)}</TableCell>
-                    <TableCell>{getStatusBadge(task.status)}</TableCell>
-                    <TableCell>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div 
-                          className="bg-primary h-2.5 rounded-full" 
-                          style={{ width: `${task.progress}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-xs text-gray-500 mt-1">{task.progress}%</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        {isAdmin && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleEditTask(task)}
-                          >
-                            Edit
+      {filteredTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <div className="rounded-full bg-muted p-3 mb-4">
+            <CheckCircle className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium mb-1">No tasks found</h3>
+          <p className="text-muted-foreground mb-4">
+            {searchTerm || filterStatus !== "all" || filterPriority !== "all"
+              ? "Try changing your filters"
+              : isAdmin
+              ? "Create a new task to get started"
+              : "No tasks have been assigned to you yet"}
+          </p>
+          {isAdmin && (
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Task
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {filteredTasks.map((task) => (
+            <Card key={task.id} className="overflow-hidden">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="text-lg">{task.title}</CardTitle>
+                    <CardDescription className="mt-1">
+                      Due: {task.dueDate || "Not set"}
+                    </CardDescription>
+                  </div>
+                  <Dialog>
+                    {(isAdmin || task.assignedTo === user?.id) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
                           </Button>
-                        )}
-                        
-                        {!isAdmin && task.status !== "completed" && (
-                          <Select 
-                            value={task.status} 
-                            onValueChange={(value: TaskStatus) => handleUpdateStatus(task.id, value)}
-                          >
-                            <SelectTrigger className="h-8 w-[130px]">
-                              <SelectValue placeholder="Update Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="in_progress">In Progress</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DialogTrigger asChild>
+                            <DropdownMenuItem onSelect={() => setEditingTask(task)}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit
+                            </DropdownMenuItem>
+                          </DialogTrigger>
+                          {isAdmin && (
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive"
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                handleDeleteTask(task.id);
+                              }}
+                            >
+                              <Trash className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {editingTask && editingTask.id === task.id && (
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Edit Task</DialogTitle>
+                          <DialogDescription>
+                            Make changes to this task.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <label htmlFor="edit-title" className="text-sm font-medium">Title</label>
+                            <Input
+                              id="edit-title"
+                              name="title"
+                              placeholder="Task title"
+                              value={editingTask.title}
+                              onChange={handleEditInputChange}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <label htmlFor="edit-description" className="text-sm font-medium">Description</label>
+                            <Textarea
+                              id="edit-description"
+                              name="description"
+                              placeholder="Task description"
+                              value={editingTask.description}
+                              onChange={handleEditInputChange}
+                              rows={3}
+                            />
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label htmlFor="edit-status" className="text-sm font-medium">Status</label>
+                              <Select
+                                value={editingTask.status}
+                                onValueChange={(value) => handleEditSelectChange("status", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="in_progress">In Progress</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                  <SelectItem value="on_hold">On Hold</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <label htmlFor="edit-priority" className="text-sm font-medium">Priority</label>
+                              <Select
+                                value={editingTask.priority}
+                                onValueChange={(value) => handleEditSelectChange("priority", value as TaskPriority)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select priority" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="low">Low</SelectItem>
+                                  <SelectItem value="medium">Medium</SelectItem>
+                                  <SelectItem value="high">High</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label htmlFor="edit-dueDate" className="text-sm font-medium">Due Date</label>
+                              <Input
+                                id="edit-dueDate"
+                                name="dueDate"
+                                type="date"
+                                value={editingTask.dueDate}
+                                onChange={handleEditInputChange}
+                              />
+                            </div>
+                            
+                            {isAdmin && (
+                              <div className="space-y-2">
+                                <label htmlFor="edit-assignedTo" className="text-sm font-medium">Assigned To</label>
+                                <Select
+                                  value={editingTask.assignedTo}
+                                  onValueChange={(value) => handleEditSelectChange("assignedTo", value)}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select employee" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {employees.map((employee) => (
+                                      <SelectItem key={employee.id} value={employee.id}>
+                                        {employee.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">
+                              Progress: {editingTask.progress}%
+                            </label>
+                            <Input
+                              type="range"
+                              name="progress"
+                              min="0"
+                              max="100"
+                              value={editingTask.progress}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                handleEditSelectChange("progress", value.toString());
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button type="button" variant="outline" onClick={() => setEditingTask(null)}>
+                            Cancel
+                          </Button>
+                          <Button type="button" onClick={handleUpdateTask}>
+                            Save Changes
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    )}
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="line-clamp-3 text-sm text-muted-foreground mb-4">
+                  {task.description || "No description provided"}
+                </p>
+                
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <Badge variant="secondary" className={getStatusColor(task.status)}>
+                    {task.status.replace("_", " ")}
+                  </Badge>
+                  <Badge variant="secondary" className={getPriorityColor(task.priority)}>
+                    {task.priority}
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Progress</span>
+                    <span>{task.progress}%</span>
+                  </div>
+                  <Progress value={task.progress} className="h-2" />
+                </div>
+              </CardContent>
+              <CardFooter className="border-t bg-muted/50 px-6 py-3">
+                <div className="flex justify-between items-center w-full text-xs text-muted-foreground">
+                  <div className="flex items-center">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {new Date(task.createdAt).toLocaleDateString()}
+                  </div>
+                  <div>
+                    {employees.find(e => e.id === task.assignedTo)?.name || "Unassigned"}
+                  </div>
+                </div>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

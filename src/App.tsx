@@ -19,6 +19,7 @@ import AttendancePage from "./pages/Attendance";
 import LeavePage from "./pages/Leave";
 import ProfilePage from "./pages/Profile";
 import SettingsPage from "./pages/Settings";
+import EmployeesPage from "./pages/Employees";
 
 const queryClient = new QueryClient();
 
@@ -45,8 +46,7 @@ const App = () => (
                       <Route path="leave" element={<LeavePage />} />
                       <Route path="profile" element={<ProfilePage />} />
                       <Route path="settings" element={<SettingsPage />} />
-                      {/* Only the employees page is not implemented yet */}
-                      <Route path="employees" element={<div className="p-4">Employees Page (to be implemented)</div>} />
+                      <Route path="employees" element={<EmployeesPage />} />
                     </Route>
                     
                     <Route path="*" element={<NotFound />} />
