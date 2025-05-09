@@ -1,5 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
+import axios from "axios";
 import { toast } from "@/components/ui/sonner";
 
 // Define types
@@ -25,35 +25,6 @@ interface AuthContextType {
   isAdmin: boolean;
 }
 
-// Mock user data for demonstration
-const adminUser: User = {
-  id: "1",
-  name: "Admin User",
-  email: "admin@company.com",
-  role: "admin",
-  department: "Management",
-  position: "Administrator",
-  joinedDate: "2020-01-01",
-  profilePicture: "/placeholder.svg",
-};
-
-const employeeUser: User = {
-  id: "2",
-  name: "John Employee",
-  email: "employee@company.com",
-  role: "employee",
-  department: "Development",
-  position: "Software Engineer",
-  joinedDate: "2021-03-15",
-  profilePicture: "/placeholder.svg",
-};
-
-// Mock credentials
-const mockCredentials = [
-  { email: "admin@company.com", password: "admin123", user: adminUser },
-  { email: "employee@company.com", password: "emp123", user: employeeUser },
-];
-
 // Create context
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -67,6 +38,22 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [employees, setEmployees] = useState<User[]>([]);
+
+  // Fetch employees on mount
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const response = await axios.get("http://localhost:5000/api/employees");
+        setEmployees(response.data);
+      } catch (error) {
+        console.error("Error fetching employees:", error);
+        toast.error("Failed to fetch employees");
+      }
+    };
+
+    fetchEmployees();
+  }, []);
 
   // Check for persisted authentication
   useEffect(() => {
@@ -77,6 +64,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, []);
 
+  // Generate mock password (e.g., email prefix + "123")
+  const generateMockPassword = (email: string) => {
+    const emailPrefix = email.split("@")[0];
+    return `${emailPrefix}123`;
+  };
+
+  // Log authentication event to database
+  const logAuthEvent = async (employeeId: string, action: "login" | "logout") => {
+    try {
+      await axios.post("http://localhost:5000/api/login-logs", {
+        employeeId,
+        action,
+      });
+    } catch (error) {
+      console.error(`Error logging ${action} event:`, error);
+      toast.error(`Failed to log ${action} event`);
+    }
+  };
+
   // Login function
   const login = async (email: string, password: string) => {
     setIsLoading(true);
@@ -84,19 +90,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
       
-      // Find user with matching credentials
-      const foundCredentials = mockCredentials.find(
-        (cred) => cred.email.toLowerCase() === email.toLowerCase() && cred.password === password
+      // Find user with matching email
+      const foundEmployee = employees.find(
+        (emp) => emp.email.toLowerCase() === email.toLowerCase()
       );
       
-      if (foundCredentials) {
-        setUser(foundCredentials.user);
-        localStorage.setItem("user", JSON.stringify(foundCredentials.user));
-        toast.success("Login successful");
-      } else {
+      if (!foundEmployee) {
         toast.error("Invalid email or password");
-        throw new Error("Invalid credentials");
+        throw new Error("Invalid email");
       }
+
+      // Check password (mock: email prefix + "123")
+      const expectedPassword = generateMockPassword(foundEmployee.email);
+      if (password !== expectedPassword) {
+        toast.error("Invalid email or password");
+        throw new Error("Invalid password");
+      }
+
+      // Successful login
+      setUser(foundEmployee);
+      localStorage.setItem("user", JSON.stringify(foundEmployee));
+      await logAuthEvent(foundEmployee.id, "login");
+      toast.success("Login successful");
     } catch (error) {
       console.error("Login error:", error);
       throw error;
@@ -106,7 +121,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Logout function
-  const logout = () => {
+  const logout = async () => {
+    if (user) {
+      await logAuthEvent(user.id, "logout");
+    }
     setUser(null);
     localStorage.removeItem("user");
     toast.info("Logged out successfully");

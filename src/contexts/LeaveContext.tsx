@@ -1,5 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
+import axios from "axios";
 import { toast } from "@/components/ui/sonner";
 
 export type LeaveStatus = "pending" | "approved" | "rejected";
@@ -17,63 +17,28 @@ export interface LeaveRequest {
   reviewedBy?: string;
   reviewDate?: string;
   comments?: string;
+  version: number;
 }
 
 interface LeaveContextType {
   leaveRequests: LeaveRequest[];
   isLoading: boolean;
   error: string | null;
-  applyForLeave: (request: Omit<LeaveRequest, "id" | "status" | "appliedDate">) => void;
-  approveLeave: (id: string, adminId: string, comments?: string) => void;
-  rejectLeave: (id: string, adminId: string, comments?: string) => void;
+  applyForLeave: (request: Omit<LeaveRequest, "id" | "status" | "appliedDate" | "version">) => Promise<void>;
+  approveLeave: (id: string, adminId: string, comments?: string, version?: number) => Promise<void>;
+  rejectLeave: (id: string, adminId: string, comments?: string, version?: number) => Promise<void>;
   getEmployeeLeaves: (employeeId: string) => LeaveRequest[];
   getPendingLeaves: () => LeaveRequest[];
 }
-
-// Mock data
-const mockLeaveRequests: LeaveRequest[] = [
-  {
-    id: "1",
-    employeeId: "2",
-    startDate: "2023-06-10",
-    endDate: "2023-06-15",
-    type: "vacation",
-    reason: "Family vacation",
-    status: "approved",
-    appliedDate: "2023-05-20",
-    reviewedBy: "1",
-    reviewDate: "2023-05-22",
-  },
-  {
-    id: "2",
-    employeeId: "3",
-    startDate: "2023-06-05",
-    endDate: "2023-06-06",
-    type: "sick",
-    reason: "Not feeling well",
-    status: "pending",
-    appliedDate: "2023-06-04",
-  },
-  {
-    id: "3",
-    employeeId: "4",
-    startDate: "2023-07-01",
-    endDate: "2023-07-10",
-    type: "vacation",
-    reason: "Summer vacation",
-    status: "pending",
-    appliedDate: "2023-05-25",
-  },
-];
 
 // Create context
 const LeaveContext = createContext<LeaveContextType>({
   leaveRequests: [],
   isLoading: false,
   error: null,
-  applyForLeave: () => {},
-  approveLeave: () => {},
-  rejectLeave: () => {},
+  applyForLeave: async () => {},
+  approveLeave: async () => {},
+  rejectLeave: async () => {},
   getEmployeeLeaves: () => [],
   getPendingLeaves: () => [],
 });
@@ -83,71 +48,82 @@ export const LeaveProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Simulate API fetch
-    const fetchLeaves = async () => {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setLeaveRequests(mockLeaveRequests);
-        setError(null);
-      } catch (err) {
-        setError("Failed to fetch leave requests");
-        console.error("Error fetching leave requests:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Fetch leave requests
+  const fetchLeaves = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get("http://localhost:5000/api/leave-requests");
+      setLeaveRequests(response.data);
+      setError(null);
+    } catch (err: any) {
+      const message = err.response?.data?.error || err.message || "Failed to fetch leave requests";
+      setError(message);
+      console.error("Error fetching leave requests:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  // Fetch on mount
+  useEffect(() => {
     fetchLeaves();
   }, []);
 
-  const applyForLeave = (request: Omit<LeaveRequest, "id" | "status" | "appliedDate">) => {
-    const today = new Date().toISOString().split("T")[0];
-    const newRequest: LeaveRequest = {
-      ...request,
-      id: Date.now().toString(),
-      status: "pending",
-      appliedDate: today,
-    };
-    
-    setLeaveRequests([...leaveRequests, newRequest]);
-    toast.success("Leave request submitted successfully");
+  const applyForLeave = async (request: Omit<LeaveRequest, "id" | "status" | "appliedDate" | "version">) => {
+    try {
+      console.log("Applying for leave:", request);
+      const response = await axios.post("http://localhost:5000/api/leave-requests", {
+        ...request,
+      });
+      console.log("Response:", response.data);
+      await fetchLeaves();
+      toast.success("Leave request submitted successfully");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to submit leave request";
+      setError(message);
+      console.error("Error applying for leave:", err);
+      toast.error(message);
+    }
   };
 
-  const approveLeave = (id: string, adminId: string, comments?: string) => {
-    const today = new Date().toISOString().split("T")[0];
-    setLeaveRequests(
-      leaveRequests.map((request) =>
-        request.id === id
-          ? {
-              ...request,
-              status: "approved",
-              reviewedBy: adminId,
-              reviewDate: today,
-              comments: comments || request.comments,
-            }
-          : request
-      )
-    );
-    toast.success("Leave request approved");
+  const approveLeave = async (id: string, adminId: string, comments?: string, version?: number) => {
+    try {
+      await axios.put(`http://localhost:5000/api/leave-requests/${id}/approve`, {
+        adminId,
+        comments,
+        version: version ?? leaveRequests.find(req => req.id === id)?.version ?? 1,
+      });
+      await fetchLeaves();
+      toast.success("Leave request approved");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to approve leave request";
+      setError(message);
+      console.error("Error approving leave:", err);
+      toast.error(message);
+      if (err.response?.status === 409) {
+        toast.error("Leave request was modified by another user. Please refresh and try again.");
+      }
+    }
   };
 
-  const rejectLeave = (id: string, adminId: string, comments?: string) => {
-    const today = new Date().toISOString().split("T")[0];
-    setLeaveRequests(
-      leaveRequests.map((request) =>
-        request.id === id
-          ? {
-              ...request,
-              status: "rejected",
-              reviewedBy: adminId,
-              reviewDate: today,
-              comments: comments || request.comments,
-            }
-          : request
-      )
-    );
-    toast.success("Leave request rejected");
+  const rejectLeave = async (id: string, adminId: string, comments?: string, version?: number) => {
+    try {
+      await axios.put(`http://localhost:5000/api/leave-requests/${id}/reject`, {
+        adminId,
+        comments,
+        version: version ?? leaveRequests.find(req => req.id === id)?.version ?? 1,
+      });
+      await fetchLeaves();
+      toast.success("Leave request rejected");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to reject leave request";
+      setError(message);
+      console.error("Error rejecting leave:", err);
+      toast.error(message);
+      if (err.response?.status === 409) {
+        toast.error("Leave request was modified by another user. Please refresh and try again.");
+      }
+    }
   };
 
   const getEmployeeLeaves = (employeeId: string) => {

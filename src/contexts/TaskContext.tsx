@@ -1,6 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { toast } from "@/components/ui/sonner";
+import axios from "axios";
 
 export type TaskPriority = "low" | "medium" | "high";
 export type TaskStatus = "pending" | "in_progress" | "completed" | "on_hold";
@@ -23,73 +23,21 @@ interface TaskContextType {
   tasks: Task[];
   isLoading: boolean;
   error: string | null;
-  addTask: (task: Omit<Task, "id" | "createdAt">) => void;
-  updateTask: (id: string, task: Partial<Task>) => void;
-  deleteTask: (id: string) => void;
+  addTask: (task: Omit<Task, "id" | "createdAt">) => Promise<void>;
+  updateTask: (id: string, task: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   getEmployeeTasks: (employeeId: string) => Task[];
   getTaskById: (id: string) => Task | undefined;
 }
-
-// Mock data
-const mockTasks: Task[] = [
-  {
-    id: "1",
-    title: "Complete Project Proposal",
-    description: "Write a detailed project proposal for the new client",
-    assignedTo: "2",
-    assignedBy: "1",
-    createdAt: "2023-05-10",
-    dueDate: "2023-05-20",
-    priority: "high",
-    status: "completed",
-    progress: 100,
-  },
-  {
-    id: "2",
-    title: "Prepare Sales Presentation",
-    description: "Create slides for the upcoming sales pitch",
-    assignedTo: "3",
-    assignedBy: "1",
-    createdAt: "2023-05-12",
-    dueDate: "2023-05-18",
-    priority: "medium",
-    status: "in_progress",
-    progress: 60,
-  },
-  {
-    id: "3",
-    title: "Review Code PR",
-    description: "Review the pull request for the new feature",
-    assignedTo: "2",
-    assignedBy: "1",
-    createdAt: "2023-05-15",
-    dueDate: "2023-05-17",
-    priority: "high",
-    status: "pending",
-    progress: 0,
-  },
-  {
-    id: "4",
-    title: "Update Documentation",
-    description: "Update the API documentation with the latest changes",
-    assignedTo: "4",
-    assignedBy: "1",
-    createdAt: "2023-05-14",
-    dueDate: "2023-05-25",
-    priority: "low",
-    status: "in_progress",
-    progress: 30,
-  },
-];
 
 // Create context
 const TaskContext = createContext<TaskContextType>({
   tasks: [],
   isLoading: false,
   error: null,
-  addTask: () => {},
-  updateTask: () => {},
-  deleteTask: () => {},
+  addTask: async () => {},
+  updateTask: async () => {},
+  deleteTask: async () => {},
   getEmployeeTasks: () => [],
   getTaskById: () => undefined,
 });
@@ -99,15 +47,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const API_URL = "http://localhost:5000/api/tasks";
+
   useEffect(() => {
-    // Simulate API fetch
     const fetchTasks = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setTasks(mockTasks);
+        const response = await axios.get(API_URL);
+        setTasks(response.data);
         setError(null);
-      } catch (err) {
-        setError("Failed to fetch tasks");
+      } catch (err: any) {
+        const errorMessage = err.response?.data?.error || "Failed to fetch tasks";
+        setError(errorMessage);
         console.error("Error fetching tasks:", err);
       } finally {
         setIsLoading(false);
@@ -117,39 +67,58 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchTasks();
   }, []);
 
-  const addTask = (task: Omit<Task, "id" | "createdAt">) => {
-    const today = new Date().toISOString().split("T")[0];
-    const newTask: Task = {
-      ...task,
-      id: Date.now().toString(),
-      createdAt: today,
-      progress: task.status === "completed" ? 100 : task.progress || 0,
-    };
-    
-    setTasks([...tasks, newTask]);
-    toast.success("Task added successfully");
+  const addTask = async (task: Omit<Task, "id" | "createdAt">) => {
+    console.log("Adding task:", task); // Debug log
+    try {
+      const response = await axios.post(API_URL, {
+        ...task,
+        progress: task.status === "completed" ? 100 : task.progress || 0,
+      });
+      console.log("Response:", response.data); // Debug log
+      setTasks([...tasks, response.data]);
+      toast.success("Task added successfully");
+    } catch (err: any) {
+      console.error("Error adding task:", err);
+      const errorMessage = err.response?.data?.error || "Failed to add task";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
-  const updateTask = (id: string, taskData: Partial<Task>) => {
-    setTasks(
-      tasks.map((task) => {
-        if (task.id === id) {
-          const updatedTask = { ...task, ...taskData };
-          // Ensure progress is 100% if status is completed
-          if (updatedTask.status === "completed" && updatedTask.progress !== 100) {
-            updatedTask.progress = 100;
-          }
-          return updatedTask;
-        }
-        return task;
-      })
-    );
-    toast.success("Task updated successfully");
+  const updateTask = async (id: string, taskData: Partial<Task>) => {
+    console.log("Updating task:", id, taskData); // Debug log
+    try {
+      const updatedTaskData = {
+        ...taskData,
+        progress: taskData.status === "completed" ? 100 : taskData.progress,
+      };
+      await axios.put(`${API_URL}/${id}`, updatedTaskData);
+      setTasks(
+        tasks.map((task) =>
+          task.id === id ? { ...task, ...updatedTaskData } : task
+        )
+      );
+      toast.success("Task updated successfully");
+    } catch (err: any) {
+      console.error("Error updating task:", err);
+      const errorMessage = err.response?.data?.error || "Failed to update task";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter((task) => task.id !== id));
-    toast.success("Task deleted successfully");
+  const deleteTask = async (id: string) => {
+    console.log("Deleting task:", id); // Debug log
+    try {
+      await axios.delete(`${API_URL}/${id}`);
+      setTasks(tasks.filter((task) => task.id !== id));
+      toast.success("Task deleted successfully");
+    } catch (err: any) {
+      console.error("Error deleting task:", err);
+      const errorMessage = err.response?.data?.error || "Failed to delete task";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
   const getEmployeeTasks = (employeeId: string) => {

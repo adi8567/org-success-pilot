@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAttendance } from "@/contexts/AttendanceContext";
+import { useEmployees } from "@/contexts/EmployeeContext";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -47,7 +47,8 @@ import { toast } from "@/components/ui/sonner";
 
 const AttendancePage: React.FC = () => {
   const { isAdmin, user } = useAuth();
-  const { attendanceRecords, clockIn, clockOut, markAttendance, updateAttendance } = useAttendance();
+  const { attendanceRecords, clockIn, clockOut, markAttendance, updateAttendance, isLoading: attendanceLoading, error: attendanceError } = useAttendance();
+  const { employees, error: employeesError } = useEmployees();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [clockInTime, setClockInTime] = useState("");
@@ -55,63 +56,107 @@ const AttendancePage: React.FC = () => {
   const [status, setStatus] = useState<"present" | "absent" | "late" | "half-day">("present");
   const [notes, setNotes] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(user?.id || "");
-
-  const handleAddAttendance = () => {
-    if (!selectedDate) {
-      toast.error("Please select a date");
-      return;
-    }
-
-    const formattedDate = format(selectedDate, "yyyy-MM-dd");
-
-    markAttendance({
-      employeeId: selectedEmployeeId,
-      date: formattedDate,
-      clockIn: clockInTime,
-      clockOut: clockOutTime || null,
-      status,
-      notes,
-    });
-
-    // Reset form
-    setSelectedDate(new Date());
-    setClockInTime("");
-    setClockOutTime("");
-    setStatus("present");
-    setNotes("");
-    setIsAddDialogOpen(false);
-    
-    toast.success("Attendance record added successfully");
-  };
-
-  const handleClockInAction = () => {
-    if (user?.id) {
-      clockIn(user.id);
-      toast.success("Clocked in successfully");
-    } else {
-      toast.error("User ID not found");
-    }
-  };
-
-  const handleClockOutAction = () => {
-    if (user?.id) {
-      clockOut(user.id);
-      toast.success("Clocked out successfully");
-    } else {
-      toast.error("User ID not found");
-    }
-  };
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter records based on user role
-  const filteredRecords = isAdmin 
-    ? attendanceRecords 
+  const filteredRecords = isAdmin
+    ? attendanceRecords
     : attendanceRecords.filter(record => record.employeeId === user?.id);
 
   // Check if user has already clocked in/out today
   const today = format(new Date(), "yyyy-MM-dd");
   const todayRecord = attendanceRecords.find(
-    record => record.date === today && record.employeeId === user?.id
+    (record) => record.date === today && record.employeeId === user?.id
   );
+
+  // Validate form for adding attendance record
+  const validateForm = () => {
+    const errors: string[] = [];
+    if (!selectedEmployeeId) errors.push("Employee ID is required");
+    if (!selectedDate) errors.push("Date is required");
+    if (!clockInTime) errors.push("Clock In time is required");
+    if (clockInTime && clockOutTime) {
+      const [inHour, inMinute] = clockInTime.split(":").map(Number);
+      const [outHour, outMinute] = clockOutTime.split(":").map(Number);
+      const inTime = inHour * 60 + inMinute;
+      const outTime = outHour * 60 + outMinute;
+      if (outTime <= inTime) {
+        errors.push("Clock Out time must be after Clock In time");
+      }
+    }
+    if (!status) errors.push("Status is required");
+    return errors;
+  };
+
+  const handleAddAttendance = async () => {
+    const errors = validateForm();
+    if (errors.length > 0) {
+      setFormErrors(errors);
+      toast.error("Please fix the errors in the form");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const formattedDate = format(selectedDate!, "yyyy-MM-dd");
+      await markAttendance({
+        employeeId: selectedEmployeeId,
+        date: formattedDate,
+        clockIn: clockInTime,
+        clockOut: clockOutTime || null,
+        status,
+        notes: notes || undefined,
+      });
+
+      // Reset form
+      setSelectedDate(new Date());
+      setClockInTime("");
+      setClockOutTime("");
+      setStatus("present");
+      setNotes("");
+      setSelectedEmployeeId(isAdmin ? "" : user?.id || "");
+      setIsAddDialogOpen(false);
+      setFormErrors([]);
+    } catch (error: any) {
+      setFormErrors([error.message || "Failed to add attendance record"]);
+      toast.error(error.message || "Failed to add attendance record");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClockInAction = async () => {
+    if (!user?.id) {
+      toast.error("User ID not found");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await clockIn(user.id);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to clock in");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClockOutAction = async () => {
+    if (!user?.id) {
+      toast.error("User ID not found");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await clockOut(user.id);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to clock out");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -128,15 +173,15 @@ const AttendancePage: React.FC = () => {
             <>
               <Button 
                 onClick={handleClockInAction}
-                disabled={todayRecord?.clockIn !== ""}
+                disabled={isSubmitting || !!todayRecord?.clockIn}
               >
-                Clock In
+                {isSubmitting ? "Processing..." : "Clock In"}
               </Button>
               <Button 
                 onClick={handleClockOutAction}
-                disabled={!todayRecord?.clockIn || todayRecord?.clockOut !== ""}
+                disabled={isSubmitting || !todayRecord?.clockIn || !!todayRecord?.clockOut}
               >
-                Clock Out
+                {isSubmitting ? "Processing..." : "Clock Out"}
               </Button>
             </>
           )}
@@ -144,7 +189,7 @@ const AttendancePage: React.FC = () => {
           {isAdmin && (
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button disabled={isSubmitting}>
                   <Plus className="mr-2 h-4 w-4" />
                   Add Record
                 </Button>
@@ -157,15 +202,32 @@ const AttendancePage: React.FC = () => {
                   </DialogDescription>
                 </DialogHeader>
                 
+                {formErrors.length > 0 && (
+                  <div className="text-red-500">
+                    {formErrors.map((error, index) => (
+                      <p key={index}>{error}</p>
+                    ))}
+                  </div>
+                )}
+
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
                     <Label htmlFor="employee">Employee</Label>
-                    <Input
-                      id="employee"
-                      placeholder="Employee ID"
+                    <Select
                       value={selectedEmployeeId}
-                      onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                    />
+                      onValueChange={setSelectedEmployeeId}
+                    >
+                      <SelectTrigger id="employee">
+                        <SelectValue placeholder="Select employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={employee.id}>
+                            {employee.name} ({employee.id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   
                   <div className="grid gap-2">
@@ -189,6 +251,7 @@ const AttendancePage: React.FC = () => {
                           selected={selectedDate}
                           onSelect={setSelectedDate}
                           initialFocus
+                          disabled={(date) => date > new Date()}
                         />
                       </PopoverContent>
                     </Popover>
@@ -218,7 +281,7 @@ const AttendancePage: React.FC = () => {
                   <div>
                     <Label htmlFor="status">Status</Label>
                     <Select value={status} onValueChange={(value: "present" | "absent" | "late" | "half-day") => setStatus(value)}>
-                      <SelectTrigger>
+                      <SelectTrigger id="status">
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -242,8 +305,22 @@ const AttendancePage: React.FC = () => {
                 </div>
                 
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleAddAttendance}>Save</Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setIsAddDialogOpen(false);
+                      setFormErrors([]);
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleAddAttendance}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Saving..." : "Save"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -251,6 +328,10 @@ const AttendancePage: React.FC = () => {
         </div>
       </div>
       
+      {attendanceError && <p className="text-red-500">{attendanceError}</p>}
+      {employeesError && <p className="text-red-500">Failed to fetch employees: {employeesError}</p>}
+      {attendanceLoading && <p>Loading attendance records...</p>}
+
       <Card>
         <CardHeader>
           <CardTitle>Attendance Records</CardTitle>
@@ -263,7 +344,7 @@ const AttendancePage: React.FC = () => {
             <TableCaption>A list of attendance records</TableCaption>
             <TableHeader>
               <TableRow>
-                {isAdmin && <TableHead>Employee ID</TableHead>}
+                {isAdmin && <TableHead>Employee</TableHead>}
                 <TableHead>Date</TableHead>
                 <TableHead>Clock In</TableHead>
                 <TableHead>Clock Out</TableHead>
@@ -281,7 +362,13 @@ const AttendancePage: React.FC = () => {
               ) : (
                 filteredRecords.map((record) => (
                   <TableRow key={record.id}>
-                    {isAdmin && <TableCell>{record.employeeId}</TableCell>}
+                    {isAdmin && (
+                      <TableCell>
+                        {employees.length > 0 
+                          ? (employees.find((e) => e.id === record.employeeId)?.name || `Unknown (${record.employeeId})`)
+                          : `Loading... (${record.employeeId})`}
+                      </TableCell>
+                    )}
                     <TableCell>{record.date}</TableCell>
                     <TableCell>{record.clockIn || "N/A"}</TableCell>
                     <TableCell>{record.clockOut || "N/A"}</TableCell>

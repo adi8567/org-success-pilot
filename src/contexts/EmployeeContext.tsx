@@ -1,136 +1,104 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { User } from "./AuthContext";
-import { toast } from "@/components/ui/sonner";
+import axios from "axios";
 
-// Define Employee type (extends User)
-export interface Employee extends User {
+export interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  department?: string;
+  position?: string;
+  joinedDate?: string;
   phone?: string;
   address?: string;
+  profilePicture?: string;
   emergencyContact?: string;
   salary?: number;
 }
 
-// Define context type
 interface EmployeeContextType {
   employees: Employee[];
-  isLoading: boolean;
   error: string | null;
-  addEmployee: (employee: Omit<Employee, "id">) => void;
-  updateEmployee: (id: string, employee: Partial<Employee>) => void;
-  deleteEmployee: (id: string) => void;
-  getEmployee: (id: string) => Employee | undefined;
+  addEmployee: (employee: Omit<Employee, "id">) => Promise<void>;
+  updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
+  deleteEmployee: (id: string) => Promise<void>;
 }
-
-// Mock data
-const mockEmployees: Employee[] = [
-  {
-    id: "2",
-    name: "John Employee",
-    email: "employee@company.com",
-    role: "employee",
-    department: "Development",
-    position: "Software Engineer",
-    joinedDate: "2021-03-15",
-    phone: "123-456-7890",
-    address: "123 Main St, Anytown USA",
-    profilePicture: "/placeholder.svg",
-  },
-  {
-    id: "3",
-    name: "Jane Doe",
-    email: "jane.doe@company.com",
-    role: "employee",
-    department: "Marketing",
-    position: "Marketing Specialist",
-    joinedDate: "2022-02-10",
-    phone: "987-654-3210",
-    address: "456 Elm St, Anytown USA",
-    profilePicture: "/placeholder.svg",
-  },
-  {
-    id: "4",
-    name: "Robert Smith",
-    email: "robert.smith@company.com",
-    role: "employee",
-    department: "HR",
-    position: "HR Manager",
-    joinedDate: "2020-05-20",
-    phone: "555-123-4567",
-    address: "789 Oak St, Anytown USA",
-    profilePicture: "/placeholder.svg",
-  },
-];
 
 // Create context
 const EmployeeContext = createContext<EmployeeContextType>({
   employees: [],
-  isLoading: false,
   error: null,
-  addEmployee: () => {},
-  updateEmployee: () => {},
-  deleteEmployee: () => {},
-  getEmployee: () => undefined,
+  addEmployee: async () => {},
+  updateEmployee: async () => {},
+  deleteEmployee: async () => {},
 });
 
 export const EmployeeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Simulate API fetch
-    const fetchEmployees = async () => {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setEmployees(mockEmployees);
-        setError(null);
-      } catch (err) {
-        setError("Failed to fetch employees");
-        console.error("Error fetching employees:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Fetch employees
+  const fetchEmployees = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/employees");
+      setEmployees(response.data);
+      setError(null);
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to fetch employees";
+      setError(message);
+      console.error("Error fetching employees:", err);
+    }
+  };
 
+  // Fetch on mount
+  useEffect(() => {
     fetchEmployees();
   }, []);
 
-  const addEmployee = (employee: Omit<Employee, "id">) => {
-    const newEmployee = {
-      ...employee,
-      id: Date.now().toString(),
-    };
-    setEmployees([...employees, newEmployee]);
-    toast.success(`Employee ${newEmployee.name} added successfully`);
+  const addEmployee = async (employee: Omit<Employee, "id">) => {
+    try {
+      const response = await axios.post("http://localhost:5000/api/employees", employee);
+      setEmployees([...employees, response.data]);
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to add employee";
+      setError(message);
+      console.error("Error adding employee:", err);
+      throw new Error(message);
+    }
   };
 
-  const updateEmployee = (id: string, employeeData: Partial<Employee>) => {
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === id ? { ...emp, ...employeeData } : emp
-      )
-    );
-    toast.success("Employee updated successfully");
+  const updateEmployee = async (id: string, updates: Partial<Employee>) => {
+    try {
+      await axios.put(`http://localhost:5000/api/employees/${id}`, updates);
+      setEmployees(
+        employees.map((emp) => (emp.id === id ? { ...emp, ...updates } : emp))
+      );
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to update employee";
+      setError(message);
+      console.error("Error updating employee:", err);
+      throw new Error(message);
+    }
   };
 
-  const deleteEmployee = (id: string) => {
-    setEmployees(employees.filter((emp) => emp.id !== id));
-    toast.success("Employee deleted successfully");
-  };
-
-  const getEmployee = (id: string) => {
-    return employees.find((emp) => emp.id === id);
+  const deleteEmployee = async (id: string) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/employees/${id}`);
+      setEmployees(employees.filter((emp) => emp.id !== id));
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to delete employee";
+      setError(message);
+      console.error("Error deleting employee:", err);
+      throw new Error(message);
+    }
   };
 
   const value: EmployeeContextType = {
     employees,
-    isLoading,
     error,
     addEmployee,
     updateEmployee,
     deleteEmployee,
-    getEmployee,
   };
 
   return <EmployeeContext.Provider value={value}>{children}</EmployeeContext.Provider>;

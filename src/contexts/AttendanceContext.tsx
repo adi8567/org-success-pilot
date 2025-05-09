@@ -1,5 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
+import axios from "axios";
 import { toast } from "@/components/ui/sonner";
 
 export interface AttendanceRecord {
@@ -16,72 +16,26 @@ interface AttendanceContextType {
   attendanceRecords: AttendanceRecord[];
   isLoading: boolean;
   error: string | null;
-  clockIn: (employeeId: string) => void;
-  clockOut: (employeeId: string) => void;
+  clockIn: (employeeId: string) => Promise<void>;
+  clockOut: (employeeId: string) => Promise<void>;
   getEmployeeAttendance: (employeeId: string) => AttendanceRecord[];
-  markAttendance: (record: Omit<AttendanceRecord, "id">) => void;
-  updateAttendance: (id: string, record: Partial<AttendanceRecord>) => void;
+  markAttendance: (record: Omit<AttendanceRecord, "id">) => Promise<void>;
+  updateAttendance: (id: string, record: Partial<AttendanceRecord>) => Promise<void>;
 }
 
 // Generate today's date in YYYY-MM-DD format
 const today = new Date().toISOString().split("T")[0];
-
-// Mock data
-const mockAttendanceRecords: AttendanceRecord[] = [
-  {
-    id: "1",
-    employeeId: "2",
-    date: "2023-05-15",
-    clockIn: "09:00",
-    clockOut: "17:30",
-    status: "present",
-  },
-  {
-    id: "2",
-    employeeId: "3",
-    date: "2023-05-15",
-    clockIn: "09:15",
-    clockOut: "17:00",
-    status: "present",
-  },
-  {
-    id: "3",
-    employeeId: "4",
-    date: "2023-05-15",
-    clockIn: "10:00",
-    clockOut: "17:30",
-    status: "late",
-    notes: "Traffic delay",
-  },
-  {
-    id: "4",
-    employeeId: "2",
-    date: "2023-05-16",
-    clockIn: "09:05",
-    clockOut: "17:45",
-    status: "present",
-  },
-  {
-    id: "5",
-    employeeId: "3",
-    date: "2023-05-16",
-    clockIn: "09:30",
-    clockOut: "14:00",
-    status: "half-day",
-    notes: "Doctor appointment",
-  },
-];
 
 // Create context
 const AttendanceContext = createContext<AttendanceContextType>({
   attendanceRecords: [],
   isLoading: false,
   error: null,
-  clockIn: () => {},
-  clockOut: () => {},
+  clockIn: async () => {},
+  clockOut: async () => {},
   getEmployeeAttendance: () => [],
-  markAttendance: () => {},
-  updateAttendance: () => {},
+  markAttendance: async () => {},
+  updateAttendance: async () => {},
 });
 
 export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -89,32 +43,42 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Simulate API fetch
-    const fetchAttendance = async () => {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setAttendanceRecords(mockAttendanceRecords);
-        setError(null);
-      } catch (err) {
-        setError("Failed to fetch attendance records");
-        console.error("Error fetching attendance:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Fetch attendance records from the database
+  const fetchAttendance = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get("http://localhost:5000/api/attendance");
+      setAttendanceRecords(response.data);
+      setError(null);
+    } catch (err: any) {
+      const message = err.response?.data?.error || err.message || "Failed to fetch attendance records";
+      setError(`Failed to fetch attendance records: ${message}`);
+      console.error("Error fetching attendance:", {
+        message: err.message,
+        response: err.response ? {
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers
+        } : "No response",
+        config: err.config
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchAttendance();
   }, []);
 
-  const clockIn = (employeeId: string) => {
+  const clockIn = async (employeeId: string) => {
     const now = new Date();
     const time = now.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     });
-    
+
     // Check if employee already clocked in today
     const existingRecord = attendanceRecords.find(
       (record) => record.employeeId === employeeId && record.date === today
@@ -125,8 +89,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
 
-    const newRecord: AttendanceRecord = {
-      id: Date.now().toString(),
+    const newRecord: Omit<AttendanceRecord, "id"> = {
       employeeId,
       date: today,
       clockIn: time,
@@ -134,11 +97,19 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       status: parseInt(time.split(":")[0]) > 9 ? "late" : "present",
     };
 
-    setAttendanceRecords([...attendanceRecords, newRecord]);
-    toast.success("Clocked in successfully");
+    try {
+      await axios.post("http://localhost:5000/api/attendance", newRecord);
+      await fetchAttendance();
+      toast.success("Clocked in successfully");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to clock in";
+      toast.error(message);
+      console.error("Error clocking in:", err);
+      throw new Error(message);
+    }
   };
 
-  const clockOut = (employeeId: string) => {
+  const clockOut = async (employeeId: string) => {
     const now = new Date();
     const time = now.toLocaleTimeString("en-US", {
       hour: "2-digit",
@@ -146,37 +117,57 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       hour12: false,
     });
 
-    setAttendanceRecords(
-      attendanceRecords.map((record) => {
-        if (record.employeeId === employeeId && record.date === today && !record.clockOut) {
-          return { ...record, clockOut: time };
-        }
-        return record;
-      })
+    const record = attendanceRecords.find(
+      (record) => record.employeeId === employeeId && record.date === today && !record.clockOut
     );
-    toast.success("Clocked out successfully");
+
+    if (!record) {
+      toast.error("No clock-in record found for today");
+      return;
+    }
+
+    try {
+      await axios.put(`http://localhost:5000/api/attendance/${record.id}`, {
+        clockOut: time,
+      });
+      await fetchAttendance();
+      toast.success("Clocked out successfully");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to clock out";
+      toast.error(message);
+      console.error("Error clocking out:", err);
+      throw new Error(message);
+    }
   };
 
   const getEmployeeAttendance = (employeeId: string) => {
     return attendanceRecords.filter((record) => record.employeeId === employeeId);
   };
 
-  const markAttendance = (record: Omit<AttendanceRecord, "id">) => {
-    const newRecord = {
-      ...record,
-      id: Date.now().toString(),
-    };
-    setAttendanceRecords([...attendanceRecords, newRecord]);
-    toast.success("Attendance marked successfully");
+  const markAttendance = async (record: Omit<AttendanceRecord, "id">) => {
+    try {
+      await axios.post("http://localhost:5000/api/attendance", record);
+      await fetchAttendance();
+      toast.success("Attendance marked successfully");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to mark attendance";
+      toast.error(message);
+      console.error("Error marking attendance:", err);
+      throw new Error(message);
+    }
   };
 
-  const updateAttendance = (id: string, recordData: Partial<AttendanceRecord>) => {
-    setAttendanceRecords(
-      attendanceRecords.map((record) =>
-        record.id === id ? { ...record, ...recordData } : record
-      )
-    );
-    toast.success("Attendance record updated");
+  const updateAttendance = async (id: string, recordData: Partial<AttendanceRecord>) => {
+    try {
+      await axios.put(`http://localhost:5000/api/attendance/${id}`, recordData);
+      await fetchAttendance();
+      toast.success("Attendance record updated");
+    } catch (err: any) {
+      const message = err.response?.data?.error || "Failed to update attendance record";
+      toast.error(message);
+      console.error("Error updating attendance:", err);
+      throw new Error(message);
+    }
   };
 
   const value: AttendanceContextType = {
